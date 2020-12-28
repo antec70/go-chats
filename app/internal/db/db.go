@@ -1,6 +1,7 @@
 package db
 
 import (
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"go-chats/app/internal/config"
 	"log"

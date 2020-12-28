@@ -17,8 +17,6 @@ type tokenClaims struct {
 	jwt.StandardClaims
 }
 
-const Signature = "mpYYjH0pF4pLttlKX9va9iimx9i7QI"
-
 func GetUser(accessToken string, conf config.ParamsLocal) (models.User, error) {
 	d := db.NewDb(conf)
 	database, er := d.GetDb()
@@ -35,7 +33,7 @@ func GetUser(accessToken string, conf config.ParamsLocal) (models.User, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("invalid signing method")
 		}
-		return []byte(Signature), nil
+		return []byte(conf.Signature), nil
 	})
 
 	if err != nil {
@@ -45,7 +43,7 @@ func GetUser(accessToken string, conf config.ParamsLocal) (models.User, error) {
 	}
 
 	if claims, ok := token.Claims.(*tokenClaims); ok && token.Valid {
-		er := database.Select(&user, "select * from users where id=?", claims.UserId)
+		er := database.Get(&user, "select * from user where id=?", claims.UserId)
 		if er != nil {
 			log.Fatal(er)
 		}
