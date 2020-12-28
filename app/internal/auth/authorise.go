@@ -2,28 +2,58 @@ package auth
 
 import (
 	"errors"
+	"fmt"
 	"github.com/dgrijalva/jwt-go"
-	"strings"
+	"go-chats/app/internal/config"
+	"go-chats/app/internal/db"
+	"go-chats/app/models"
+
+	"log"
 )
 
 type tokenClaims struct {
+	Type   string `json:"type"`
+	UserId int    `json:"usr"`
 	jwt.StandardClaims
-	UserId int `json:"user_id"`
 }
 
-func auth(accessToken string) (int, error) {
+const Signature = "mpYYjH0pF4pLttlKX9va9iimx9i7QI"
+
+func GetUser(accessToken string, conf config.ParamsLocal) (models.User, error) {
+	d := db.NewDb(conf)
+	database, er := d.GetDb()
+	user := models.User{}
+	if er != nil {
+		fmt.Println(er)
+	}
+
 	if accessToken == "" {
-		return -1, errors.New("missing jwt-accessToken")
+		return user, errors.New("missing jwt-accessToken")
 	}
 
-	tokenParts := strings.Split(accessToken, " ")
+	token, err := jwt.ParseWithClaims(accessToken, &tokenClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("invalid signing method")
+		}
+		return []byte(Signature), nil
+	})
 
-	if len(tokenParts) != 2 {
-		return -1, errors.New("invalid jwt-accessToken")
+	if err != nil {
+		fmt.Println(err)
+		return user, err
 
 	}
 
-	//	jwt.ParseWithClaims()
+	if claims, ok := token.Claims.(*tokenClaims); ok && token.Valid {
+		er := database.Select(&user, "select * from users where id=?", claims.UserId)
+		if er != nil {
+			log.Fatal(er)
+		}
+		return user, nil
 
-	return 1, nil
+	} else {
+		fmt.Println(err)
+		return user, nil
+	}
+
 }

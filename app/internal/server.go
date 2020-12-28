@@ -3,10 +3,26 @@ package internal
 import (
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"go-chats/app/internal/auth"
+	"go-chats/app/internal/config"
+
 	"time"
 
 	socketio "github.com/googollee/go-socket.io"
 )
+
+type Server struct {
+	config config.ParamsLocal
+	router *gin.Engine
+	socket *socketio.Server
+}
+
+func NewWsServ(config config.ParamsLocal) *Server {
+	return &Server{
+		config: config,
+		router: gin.New(),
+	}
+}
 
 func GinMiddleware(allowOrigin string) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -33,70 +49,72 @@ func ttl(dataChan <-chan string, s socketio.Conn) bool {
 			fmt.Println("Got:", d)
 			return true
 		case <-afterCh:
-			fmt.Println("Time's up!")
 			s.Emit("disconnect")
-			return false
+			fmt.Println("bye non auth user")
 		}
 	}
 
 }
 
-func NewServer() {
-	router := gin.New()
-	ch := make(chan string)
-	server, _ := socketio.NewServer(nil)
+func (ws *Server) NewServer() error {
 
-	server.OnConnect("/", func(s socketio.Conn) error {
+	/*if er != nil {
+		log.Fatal(er)
+	}*/
+	ch := make(chan string)
+	//server, _ := socketio.NewServer(nil)
+
+	ws.socket.OnConnect("/", func(s socketio.Conn) error {
 		s.SetContext("")
 		fmt.Println("connected:", s.ID())
 		go ttl(ch, s)
 		return nil
 	})
 
-	server.OnEvent("/", "authenticate", func(s socketio.Conn, msg string) {
+	ws.socket.OnEvent("/", "authenticate", func(s socketio.Conn, msg map[string]string) {
 
-		ch <- msg
+		ch <- msg["token"]
+		user, er := auth.GetUser(msg["token"], ws.config)
 
-		/*if msg == "2" {
-			fmt.Println("connected: peter", s.ID())
-			s.Emit("reply", "have "+msg)
-		} else {
+		if er != nil {
+			fmt.Println(er)
 			s.Emit("disconnect")
-		}*/
+		}
+		fmt.Println("User: ", user)
 
 	})
-	server.OnEvent("/", "notice", func(s socketio.Conn, msg string) {
+	ws.socket.OnEvent("/", "notice", func(s socketio.Conn, msg string) {
 		fmt.Println("notice:", msg)
 
 		s.Emit("reply", "have "+msg)
 	})
 
-	server.OnEvent("/", "msg", func(s socketio.Conn, msg string) string {
+	ws.socket.OnEvent("/", "msg", func(s socketio.Conn, msg string) string {
 		s.SetContext(msg)
 
 		return "recv " + msg
 	})
 
-	server.OnEvent("/", "bye", func(s socketio.Conn) string {
+	ws.socket.OnEvent("/", "bye", func(s socketio.Conn) string {
 		last := s.Context().(string)
 		s.Emit("bye", last)
 		s.Close()
 		return last
 	})
 
-	server.OnError("/", func(s socketio.Conn, e error) {
+	ws.socket.OnError("/", func(s socketio.Conn, e error) {
 		fmt.Println("meet error:", e)
 	})
 
-	server.OnDisconnect("/", func(s socketio.Conn, msg string) {
+	ws.socket.OnDisconnect("/", func(s socketio.Conn, msg string) {
 		fmt.Println("closed", msg)
 	})
 
-	go server.Serve()
-	defer server.Close()
+	go ws.socket.Serve()
+	defer ws.socket.Close()
 
-	router.Use(GinMiddleware("http://localhost:3000"))
-	router.GET("/socket.io/*any", gin.WrapH(server))
+	ws.router.Use(GinMiddleware("http://localhost:3000"))
+	ws.router.GET("/socket.io/*any", gin.WrapH(ws.socket))
 
-	router.Run()
+	return ws.router.Run(":5000")
 }

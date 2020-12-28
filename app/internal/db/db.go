@@ -1,21 +1,18 @@
-package internal
+package db
 
 import (
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
-	"go-chats/app/internal/models"
+	"go-chats/app/internal/config"
 	"log"
 )
 
 type Db struct {
-	config ParamsLocal
-	user   models.User
+	config config.ParamsLocal
 }
 
-func NewDb(config ParamsLocal) *Db {
+func NewDb(config config.ParamsLocal) *Db {
 	return &Db{
 		config: config,
-		user:   models.User{},
 	}
 }
 
