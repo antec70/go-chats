@@ -6,6 +6,7 @@ import (
 	"go-chats/app/internal/auth"
 	"go-chats/app/internal/config"
 	"log"
+	"strconv"
 
 	"time"
 
@@ -63,38 +64,44 @@ func (ws *Server) NewServer() error {
 	}
 	ch := make(chan string)
 
-	server.OnConnect("/chat", func(s socketio.Conn) error {
-		s.SetContext("")
+	server.OnConnect("/", func(s socketio.Conn) error {
 		fmt.Println("connected:", s.ID())
 		go ttl(ch, s)
 		return nil
 	})
 
-	server.OnEvent("/chat", "authenticate", func(s socketio.Conn, msg map[string]string) {
-
+	server.OnEvent("/", "authenticate", func(s socketio.Conn, msg map[string]string) {
 		ch <- msg["token"]
 		user, er := auth.GetUser(msg["token"], ws.config)
 		if er != nil {
-			fmt.Println(er)
+			fmt.Println("Error: user not found")
 			s.Emit("disconnect")
+		} else {
+			s.Join("messages-to-" + strconv.Itoa(user.ID))
+			s.SetContext(user.ID)
+
 		}
-		s.SetContext(user)
 
 	})
 
-	server.OnEvent("/chat", "message/send", func(s socketio.Conn, msg string) string {
+	server.OnEvent("/", "message/send", func(s socketio.Conn, msg map[string]interface{}) {
+
+		_, er := Save(msg, s.Context().(int), ws.config)
+		if er != nil {
+			fmt.Println(er)
+		}
+		//s.SetContext(msg)
+
+		//return "recv " + msg
+	})
+
+	server.OnEvent("/", "message/read", func(s socketio.Conn, msg string) string {
 		s.SetContext(msg)
 
 		return "recv " + msg
 	})
 
-	server.OnEvent("/chat", "message/read", func(s socketio.Conn, msg string) string {
-		s.SetContext(msg)
-
-		return "recv " + msg
-	})
-
-	server.OnEvent("/chat", "bye", func(s socketio.Conn) string {
+	server.OnEvent("/", "bye", func(s socketio.Conn) string {
 		last := s.Context().(string)
 		s.Emit("bye", last)
 		fmt.Println("User: ", last)
@@ -102,11 +109,11 @@ func (ws *Server) NewServer() error {
 		return last
 	})
 
-	server.OnError("/chat", func(s socketio.Conn, e error) {
+	server.OnError("/", func(s socketio.Conn, e error) {
 		fmt.Println("meet error:", e)
 	})
 
-	server.OnDisconnect("/chat", func(s socketio.Conn, msg string) {
+	server.OnDisconnect("/", func(s socketio.Conn, msg string) {
 		fmt.Println("closed", msg)
 	})
 
