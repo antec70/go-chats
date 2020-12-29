@@ -4,7 +4,6 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"go-chats/app/internal/config"
-	"log"
 )
 
 type Db struct {
@@ -21,7 +20,7 @@ func (d *Db) GetDb() (*sqlx.DB, error) {
 	db, err := sqlx.Connect("mysql", d.config.Db.User+":"+d.config.Db.Password+"@("+d.config.Db.Serv+")/"+d.config.Db.Table)
 
 	if err != nil {
-		log.Fatalln(err)
+		//	log.Fatalln(err)
 		return nil, err
 	}
 	return db, nil

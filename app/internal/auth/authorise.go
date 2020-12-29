@@ -17,12 +17,21 @@ type tokenClaims struct {
 	jwt.StandardClaims
 }
 
-func GetUser(accessToken string, conf config.ParamsLocal) (models.User, error) {
+func GetUser(accessToken string, userId int, conf config.ParamsLocal) (models.User, error) {
 	d := db.NewDb(conf)
 	database, er := d.GetDb()
 	user := models.User{}
 	if er != nil {
 		fmt.Println(er)
+		return models.User{}, er
+	}
+
+	if userId != 0 {
+		er := database.Get(&user, "select * from user where id=?", userId)
+		if er != nil {
+			log.Fatal(er)
+		}
+		return user, nil
 	}
 
 	if accessToken == "" {

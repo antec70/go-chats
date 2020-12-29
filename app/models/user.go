@@ -23,5 +23,5 @@ type User struct {
 	NewPhone      sql.NullString `db:"new_phone"`
 	PushCenter    sql.NullBool   `db:"push_center"`
 	PushMessage   sql.NullBool   `db:"push_message"`
-	Photo         sql.NullString `db:"photo"`
+	Photo         string         `db:"photo"`
 }

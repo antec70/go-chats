@@ -7,7 +7,6 @@ import (
 	"go-chats/app/internal/config"
 	"log"
 	"strconv"
-
 	"time"
 
 	socketio "github.com/googollee/go-socket.io"
@@ -29,7 +28,7 @@ func GinMiddleware(allowOrigin string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", " GET")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, Content-Length, X-CSRF-Token, Token, session, Origin, Host, Connection, Accept-Encoding, Accept-Language, X-Requested-With")
 
 		if c.Request.Method == "OPTIONS" {
@@ -51,6 +50,7 @@ func ttl(dataChan <-chan string, s socketio.Conn) bool {
 			return true
 		case <-afterCh:
 			s.Emit("disconnect")
+			s.Close()
 			fmt.Println("bye non auth user")
 		}
 	}
@@ -64,17 +64,18 @@ func (ws *Server) NewServer() error {
 	}
 	ch := make(chan string)
 
-	server.OnConnect("/", func(s socketio.Conn) error {
+	server.OnConnect("/chat", func(s socketio.Conn) error {
 		fmt.Println("connected:", s.ID())
 		go ttl(ch, s)
 		return nil
 	})
 
-	server.OnEvent("/", "authenticate", func(s socketio.Conn, msg map[string]string) {
+	server.OnEvent("/chat", "authenticate", func(s socketio.Conn, msg map[string]string) {
 		ch <- msg["token"]
-		user, er := auth.GetUser(msg["token"], ws.config)
+		user, er := auth.GetUser(msg["token"], 0, ws.config)
 		if er != nil {
 			fmt.Println("Error: user not found")
+			s.Emit("app-error", er)
 			s.Emit("disconnect")
 		} else {
 			s.Join("messages-to-" + strconv.Itoa(user.ID))
@@ -84,21 +85,24 @@ func (ws *Server) NewServer() error {
 
 	})
 
-	server.OnEvent("/", "message/send", func(s socketio.Conn, msg map[string]interface{}) {
-
-		_, er := Save(msg, s.Context().(int), ws.config)
+	server.OnEvent("/chat", "message/send", func(s socketio.Conn, msg map[string]interface{}) {
+		newM := NewMessage(ws.config)
+		message, er := newM.save(msg, s.Context().(int))
+		user, err := auth.GetUser("", s.Context().(int), ws.config)
+		if err != nil {
+			fmt.Println(err)
+		}
 		if er != nil {
 			fmt.Println(er)
+			s.Emit("app-error", er)
+		} else {
+			fmt.Println(message)
+			newM.publish(message, user)
 		}
-		//s.SetContext(msg)
-
-		//return "recv " + msg
 	})
 
-	server.OnEvent("/", "message/read", func(s socketio.Conn, msg string) string {
-		s.SetContext(msg)
+	server.OnEvent("/chat", "message/read", func(s socketio.Conn, msg map[string]interface{}) {
 
-		return "recv " + msg
 	})
 
 	server.OnEvent("/", "bye", func(s socketio.Conn) string {
@@ -109,11 +113,7 @@ func (ws *Server) NewServer() error {
 		return last
 	})
 
-	server.OnError("/", func(s socketio.Conn, e error) {
-		fmt.Println("meet error:", e)
-	})
-
-	server.OnDisconnect("/", func(s socketio.Conn, msg string) {
+	server.OnDisconnect("/chat", func(s socketio.Conn, msg string) {
 		fmt.Println("closed", msg)
 	})
 
