@@ -21,7 +21,7 @@ type User struct {
 	ActiveDate    sql.NullString `db:"active_date"`
 	Timezone      sql.NullString `db:"timezone"`
 	NewPhone      sql.NullString `db:"new_phone"`
-	PushCenter    sql.NullBool   `db:"push_center"`
-	PushMessage   sql.NullBool   `db:"push_message"`
+	PushCenter    bool           `db:"push_center"`
+	PushMessage   bool           `db:"push_message"`
 	Photo         string         `db:"photo"`
 }

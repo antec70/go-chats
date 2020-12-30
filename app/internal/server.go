@@ -90,6 +90,7 @@ func (ws *Server) NewServer() error {
 		message, er := newM.save(msg, s.Context().(int))
 		user, err := auth.GetUser("", s.Context().(int), ws.config)
 		if err != nil {
+			s.Emit("app-error", err)
 			fmt.Println(err)
 		}
 		if er != nil {
@@ -102,6 +103,11 @@ func (ws *Server) NewServer() error {
 	})
 
 	server.OnEvent("/chat", "message/read", func(s socketio.Conn, msg map[string]interface{}) {
+		er := NewMessage(ws.config).readMsg(int(msg["chatId"].(float64)), s.Context().(int))
+		if er != nil {
+			fmt.Println(er)
+			s.Emit("app-error", er)
+		}
 
 	})
 

@@ -11,4 +11,13 @@ type ParamsLocal struct {
 		Serv     string `json:"serv"`
 		Table    string `json:"table"`
 	}
+	Redis struct {
+		Addr     string `json:"addr"`
+		Password string `json:"password"`
+		Db       string `json:"db"`
+	}
+	Pusher struct {
+		Url    string `json:"url"`
+		ApiKey string `json:"apiKey"`
+	}
 }

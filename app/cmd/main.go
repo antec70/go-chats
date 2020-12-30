@@ -24,7 +24,9 @@ func main() {
 	c := config.ParamsLocal{}
 	json.Unmarshal(byteValue, &c)
 
-	w := internal.NewWsServ(c)
-	w.NewServer()
+	er = internal.NewWsServ(c).NewServer()
+	if er != nil {
+		log.Fatal(er)
+	}
 
 }

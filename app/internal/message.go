@@ -1,11 +1,15 @@
 package internal
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
 	socketio "github.com/googollee/go-socket.io"
 	"go-chats/app/internal/config"
 	"go-chats/app/internal/db"
 	"go-chats/app/models"
+	"net/http"
 	"strconv"
 	"time"
 )
@@ -13,6 +17,9 @@ import (
 type Msg struct {
 	config config.ParamsLocal
 }
+
+const typeMessage = "1"
+const topicMessage = "message-"
 
 func NewMessage(conf config.ParamsLocal) *Msg {
 	return &Msg{
@@ -32,13 +39,18 @@ type data struct {
 	Read      bool
 }
 
-func (m *Msg) save(data map[string]interface{}, user int) (models.Message, error) {
+func (m *Msg) save(data map[string]interface{}, userId int) (models.Message, error) {
 
 	d := db.NewDb(m.config)
 	database, er := d.GetDb()
+	if data["text"].(string) == "" {
+		fmt.Println("empty text")
+		return models.Message{}, errors.New("empty text")
+	}
+
 	message := models.Message{
 		ChatId:     int(data["chatId"].(float64)),
-		UserId:     user,
+		UserId:     userId,
 		Text:       data["text"].(string),
 		Status:     1,
 		Read:       false,
@@ -52,20 +64,18 @@ func (m *Msg) save(data map[string]interface{}, user int) (models.Message, error
 		fmt.Println(er)
 		return message, er
 	}
-	row, err := sql.Exec(message.ChatId, message.UserId, message.Text, message.Status, message.Read, message.CreateDate)
+	_, err := sql.Exec(message.ChatId, message.UserId, message.Text, message.Status, message.Read, message.CreateDate)
 
 	if err != nil {
 		fmt.Println(err)
 		return message, err
 	}
-	fmt.Println(row, message)
 	return message, nil
 
 }
 
-func (m *Msg) publish(message models.Message, user models.User) {
+func (m *Msg) publish(message models.Message, user models.User) error {
 	d := data{
-		Id:        nil,
 		Text:      message.Text,
 		ChatId:    message.ChatId,
 		ChatName:  user.Name + " " + user.SurName,
@@ -78,12 +88,32 @@ func (m *Msg) publish(message models.Message, user models.User) {
 	toUserId, er := m.getUserByChat(message.UserId, message.ChatId)
 	if er != nil {
 		fmt.Println(er)
+		return er
 	}
-	fmt.Println("адресат", toUserId)
 	socketio.NewBroadcast().Send("messages-to-"+strconv.Itoa(toUserId), "new-message", d)
 
-	//todo проверяем реддис и отправляем пуш
+	if user.PushMessage == true {
+		n := models.JsonRequest{
+			Push: &models.Push{
+				Type:  typeMessage,
+				Image: user.Photo,
+				Title: user.Name + " " + user.SurName,
+				Body:  message.Text,
+			},
+			Topic:  topicMessage + strconv.Itoa(toUserId),
+			ChatId: strconv.Itoa(message.ChatId),
+		}
 
+		b, er := json.Marshal(n)
+
+		if er != nil {
+			fmt.Println(er)
+		}
+		go m.sendPush(b)
+
+	}
+
+	return nil
 }
 
 func (m *Msg) getUserByChat(userId int, chatId int) (int, error) {
@@ -108,19 +138,43 @@ func (m *Msg) getUserByChat(userId int, chatId int) (int, error) {
 
 }
 
-func (m *Msg) readMsg(chatId int, userId int) {
+func (m *Msg) readMsg(chatId int, userId int) error {
 	d := db.NewDb(m.config)
 	database, er := d.GetDb()
 	sql := "UPDATE message SET `read` = true where chat_id = " + strconv.Itoa(chatId) + " AND user_id != " + strconv.Itoa(userId)
 	if er != nil {
 		fmt.Println(er)
+		return er
 	}
 
-	r, err := database.Exec(sql)
+	_, err := database.Exec(sql)
 
 	if err != nil {
 		fmt.Println(err)
-	} else {
-		fmt.Println(r)
+		return err
 	}
+	return nil
+}
+
+func (m *Msg) sendPush(data []byte) {
+
+	req, err := http.NewRequest("POST", m.config.Pusher.Url, bytes.NewBuffer(data))
+
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	req.Header.Set("X-Api-Key", m.config.Pusher.ApiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, er := client.Do(req)
+	if er != nil {
+		fmt.Println(err)
+	}
+
+	if resp.StatusCode != 200 {
+		fmt.Println("Pusher: ", resp.StatusCode)
+	}
+
 }
