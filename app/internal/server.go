@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"go-chats/app/internal/auth"
@@ -61,6 +62,10 @@ func (ws *Server) NewServer() error {
 	server, er := socketio.NewServer(nil)
 	if er != nil {
 		log.Fatal(er)
+	}
+
+	if server.Count() >= ws.config.CountConn {
+		return errors.New("connection limit reached")
 	}
 	ch := make(chan string)
 
